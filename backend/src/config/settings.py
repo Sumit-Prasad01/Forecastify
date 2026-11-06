@@ -31,6 +31,9 @@ class Settings(BaseSettings):
         extra="ignore"
     )
 
+    # Paths
+    local_forecast_result_path: str = ""
+
 
 @lru_cache
 def get_settings() -> Settings:

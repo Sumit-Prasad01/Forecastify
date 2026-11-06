@@ -373,7 +373,7 @@ def fetch_product_totals(
 
 
 
-def fetch_category_comparision(category_a: str, category_b: str, days: int = 90) -> list[dict[str, Any]]:
+def fetch_category_comparison(category_a: str, category_b: str, days: int = 90) -> list[dict[str, Any]]:
     """Total/average actual units sold for two categories over the last `days` days."""
 
     return run_query(
