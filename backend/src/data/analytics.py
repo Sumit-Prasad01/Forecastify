@@ -9,7 +9,7 @@ the /chat tool-calling path, the deterministic /chat/quick path, and the
 """
 
 from typing import Any, Optional
-from backend.src.data import db
+from src.data import db
 
 
 DEFAULT_TREND_THRESHOLD_PCT = -10.0

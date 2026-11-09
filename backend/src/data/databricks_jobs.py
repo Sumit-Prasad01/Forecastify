@@ -20,7 +20,7 @@ from typing import Any, Optional
 
 from databricks.sdk import WorkspaceClient
 
-from backend.src.config.settings import get_settings
+from src.config.settings import get_settings
 
 s = get_settings()
 

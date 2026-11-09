@@ -1,7 +1,7 @@
 import os
 from databricks import sql
 
-from backend.src.config.settings import get_settings
+from src.config.settings import get_settings
 
 s = get_settings()
 

@@ -16,8 +16,8 @@ import logging
 import re
 from typing import Any, Optional
 
-from backend.src.data import analytics
-from backend.src.genai.llm_client import call_chat
+from src.data import analytics
+from src.genai.llm_client import call_chat
 
 logger = logging.getLogger("forecastify_api.chatbot")
 
@@ -357,4 +357,136 @@ def run_chat(
         "answer": _fallback_answer(tool_results),
         "data": tool_results,
         "functions_used": list(tool_results.keys())
+    }
+
+
+# ---------------------------------------------------------------------------
+# Quick-question buttons: deterministic answers, same analytics.py functions,
+# no LLM call -- fast and always consistent, for the frontend's predefined
+# question buttons. Response shape matches run_chat()'s so both paths render
+# in the same chat thread.
+# ---------------------------------------------------------------------------
+
+
+def _scope_phrase(result: dict[str, Any]) -> str:
+    return f" at store {result['store_id']}" if result.get("store_id") else "across all store"
+
+
+
+def _format_top_category(result: dict[str, Any]) -> str:
+    if result["category"] is None:
+        return "No sales data available for that window."
+    return (
+        f"**{result['category']}** is the top-selling category{_scope_phrase(result)} over the last."
+        f"{result['days']} days, with {result['total_units']:,.0f} units sold."
+    )
+
+
+
+def _format_top_product(result: dict[str, Any]) -> str:
+    if result["product_id"] is None:
+        return "No sales data is available for that window."
+    return (
+        f"**{result['product_id']}** ({result['product_id']} is the top-selling product)"
+        f"{_scope_phrase(result)} over the last {result['days']} days, with {result['total_units']:,.0f} units sold."
+    )
+
+
+def _format_compare_categories(result: dict[str, Any]) -> str:
+    entry_a, entry_b = result["category_a"], result["category_b"]
+    if entry_a["total_units"] is None or entry_b["total_units"] is None:
+        return "Could not find data for one or both of those categories."
+    return (
+        f"Over the last{result['days']} days: **{entry_a['name']}** sold {entry_a['total_units']:,.0f} units."
+        f"({entry_a['avg_daily_units']:,.1f}/day) vs. **{entry_b['name']}** at {entry_b['total_units']:,.0f} units."
+        f"({entry_b['avg_daily_units']:,.1f}/days). **{result['leader']}** leads."
+    )
+
+
+
+def _format_store_performance(result: dict[str, Any]) -> str:
+    if result["recent_avg"] is None:
+        return f"No data found for store {result["store_id"]}"
+    if result["pct_change"] is None:
+        return (
+            f"**{result["store_name"]}** is averaging {result['recent_avg']:,.1f} units/day over the "
+            f"last {result['recent_days']} days (no baseline available for comparision)."
+        )
+
+    direction = "up" if result["pct_change"] >= 0 else "down"
+    return (
+        f"**{result['store_name']}** is averaging {result['recent_avg']:,.1f} units/day over the "
+        f"{result['recent_days']} days, {direction} {abs(result['pct_change']):.1f}% versus its "
+        f"{result['baseline_days']}-day baseline of {result['baseline_avg']:,.1f} units/day."
+    )
+
+
+
+def _format_trending_down(result: dict[str, Any]) -> str:
+    label = "products" if result["level"] == "product" else "stores"
+    if result["count"] == 0:
+        return f"No {label} are trending down beyond {result['threshold_pct']}% month-over-month."
+    lines = "\n".join(f"- {item['name']}: {item['mom_growth_pct']:+.1f}%" for item in result['items'])
+    return (
+        f"{result['count']} {label} are trending down (month-over-month at or below "
+        f"{result['threshold_pct']}%):\n\n{lines}"
+    )
+
+
+
+def _format_predicted_revenue(result: dict[str, Any]) -> str:
+    if result["total_predicted_units"] is None:
+        return "No forecast data is available."
+    return (
+        f"The 30-day forecast totals **{result['total_predicted_units']:,.0f} units**, for an approximate "
+        f"predicted revenue of **{result['total_predicted_units']:,.0f}** (using each product's base price "
+        f"as a stand-in for its future price."
+    )
+
+
+QUICK_ACTIONS: dict[str, tuple] = {
+    "top_category": (
+        lambda params: analytics.get_top_category(store_id = params.get("store_id")),
+        _format_top_category,
+    ),
+    "top_product": (
+        lambda params: analytics.get_top_product(store_id = params.get("store_id")),
+        _format_top_product,
+    ),
+    "compare_categories": (
+        lambda params: analytics.compare_categories(params["category_a"], params["category_b"]),
+        _format_compare_categories
+    ),
+    "store_performance": (
+        lambda params: analytics.get_store_performance(params["store_id"]),
+        _format_store_performance
+    ),
+    "underperforming_stores": (lambda params: analytics.get_trending_down("store"), _format_trending_down),
+    "trending_down_products": (lambda params: analytics.get_trending_down("product"), _format_trending_down),
+    "predicted_revenue": (lambda params: analytics.get_predicted_revenue_summary(), _format_predicted_revenue),
+}
+
+
+
+def run_quick_action(action: str, params: Optional[dict[str, Any]] = None) -> dict[str, Any]:
+    """Deterministic (no-LLM) answer for one of the predefined quick-question
+    buttons -- calls the same analytics.py functions as run_chat's tools,
+    just without an LLM deciding which one to call.
+
+    Raises KeyError if a required param is missing, ValueError if the action
+    is unknown -- both are caller errors (400), not server errors.
+    """
+
+    entry = QUICK_ACTIONS.get(action)
+    if entry is None:
+        raise ValueError(f"Unknown quick action: {action}")
+
+    fetch, formatter = entry
+    result = fetch(params or {})
+    return {
+        "answer": formatter(result),
+        "data": {
+            action: result
+        },
+        "functions_used": [action]
     }

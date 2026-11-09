@@ -8,8 +8,8 @@ import logging
 from contextlib import contextmanager
 from typing import Any, Optional
 
-from backend.src.data.databricks_client import get_connection
-from backend.src.config.settings import get_settings
+from src.data.databricks_client import get_connection
+from src.config.settings import get_settings
 
 
 logger = logging.getLogger("forecastify_api.db")

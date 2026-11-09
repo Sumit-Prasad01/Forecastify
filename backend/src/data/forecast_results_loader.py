@@ -2,8 +2,8 @@ import os
 from pathlib import Path
 import pandas as pd
 
-from backend.src.data.databricks_client import get_connection
-from backend.src.config.settings import get_settings
+from src.data.databricks_client import get_connection
+from src.config.settings import get_settings
 
 s = get_settings()
 
