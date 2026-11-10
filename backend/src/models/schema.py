@@ -94,7 +94,7 @@ class Store(BaseModel):
 
 
 
-class ExplainResults(BaseModel):
+class ExplainRequest(BaseModel):
     """Request body for POST /forecast/explain."""
 
     product_id : str
