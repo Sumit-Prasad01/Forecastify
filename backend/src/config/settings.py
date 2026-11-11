@@ -1,12 +1,11 @@
-from pydantic_settings import BaseSettings, SettingsConfigDict
-from functools import lru_cache
 from pathlib import Path
+from functools import lru_cache
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
-BASE_DIR = Path(__file__).resolve().parent[2]
+BASE_DIR = Path(__file__).resolve().parents[2]
 
 
 class Settings(BaseSettings):
-
     # Databricks SQL Warehouse
     databricks_server_hostname: str = ""
     databricks_http_path: str = ""
@@ -24,15 +23,16 @@ class Settings(BaseSettings):
     azure_openai_api_version: str = "2024-06-01"
 
     # CORS
-    allowed_origins: str = "http://localhost:5173,http://localhost:3000"
-
-    model_config = SettingsConfigDict(
-        env_file=str(BASE_DIR / ".env"),
-        extra="ignore"
-    )
+    allowed_origins: str = "http://localhost:5173,http://localhost:3000,http://localhost:4173,http://127.0.0.1:5173,http://127.0.0.1:3000,http://127.0.0.1:4173"
 
     # Paths
     local_forecast_result_path: str = ""
+
+    model_config = SettingsConfigDict(
+        env_file=str(BASE_DIR / ".env"),
+        env_file_encoding="utf-8",
+        extra="ignore"
+    )
 
 
 @lru_cache

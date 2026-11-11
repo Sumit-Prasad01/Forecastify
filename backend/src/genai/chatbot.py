@@ -10,7 +10,6 @@ them against real Databricks-backed data, and the LLM narrates only what
 those functions actually returned.
 """
 
-
 import json 
 import logging
 import re
@@ -42,7 +41,7 @@ def _build_system_prompt(store_id: Optional[str], store_name: Optional[str]) -> 
         return SYSTEM_PROMPT
 
     label = store_name or store_id
-    return(
+    return (
         f"{SYSTEM_PROMPT}\n\n"
         f"The user currently has store {store_id} ({label}) selected on the dashboard. "
         f'When calling get_top_category or get_top_product, pass store_id="{store_id}" unless '
@@ -64,7 +63,7 @@ TOOLS = [
                 "properties": {
                     "days": {
                         "type": "integer",
-                        "description": "Lookback window in days (default 90)"
+                        "description": "Lookback window in days (default 90)",
                     },
                     "store_id": {
                         "type": "string",
@@ -87,7 +86,7 @@ TOOLS = [
                 "properties": {
                     "days": {
                         "type": "integer",
-                        "description": "Lookback window in days (default 90)"
+                        "description": "Lookback window in days (default 90)",
                     },
                     "store_id": {
                         "type": "string",
@@ -107,15 +106,15 @@ TOOLS = [
                 "properties": {
                     "category_a": {
                         "type": "string",
-                        "description": "First category name"
+                        "description": "First category name",
                     },
                     "category_b": {
                         "type": "string",
-                        "description": "Second category name"
+                        "description": "Second category name",
                     },
-                    "days" : {
-                        "type": "string",
-                        "description": "Lookback window in days (deafult 90)"
+                    "days": {
+                        "type": "integer",
+                        "description": "Lookback window in days (default 90)",
                     },
                 },
                 "required": ["category_a", "category_b"],
@@ -135,15 +134,15 @@ TOOLS = [
                 "properties": {
                     "store_id": {
                         "type": "string",
-                        "description": "Store ID, e.g. S01"
+                        "description": "Store ID, e.g. S01",
                     },
                     "recent_days": {
                         "type": "integer",
-                        "description": "Recent window in days (default 30)"
+                        "description": "Recent window in days (default 30)",
                     },
                     "baseline_days": {
                         "type": "integer",
-                        "description": "Baseline window in days (default 180)"
+                        "description": "Baseline window in days (default 180)",
                     },
                 },
                 "required": ["store_id"],
@@ -168,10 +167,10 @@ TOOLS = [
                     },
                     "threshold_pct": {
                         "type": "number",
-                        "description": "Growth % threshold, default -10 (i.e. down 10% or more)"
+                        "description": "Growth % threshold, default -10 (i.e. down 10% or more)",
                     },
                 },
-                "required": ["level"]
+                "required": ["level"],
             },
         },
     },
@@ -182,7 +181,7 @@ TOOLS = [
             "description": "Get total predicted units and approximate predicted revenue across the entire 30-day forecast.",
             "parameters": {
                 "type": "object",
-                "properties": {}
+                "properties": {},
             },
         },
     },
@@ -215,7 +214,7 @@ TOOL_DISPATCH = {
 }
 
 
-_NUMBER_PATTERN = re.compile(r"-?\d+\.?\d**")
+_NUMBER_PATTERN = re.compile(r"-?\d+\.?\d*")
 
 
 def _parse_answer(raw_content: Optional[str]) -> Optional[str]:
@@ -231,11 +230,9 @@ def _parse_answer(raw_content: Optional[str]) -> Optional[str]:
     return parsed["answer"]
 
 
-
-def _numeric_set(text: str) -> str[float]:
+def _numeric_set(text: str) -> set[float]:
     """Extract numbers as floats (not raw strings), so "85438" and "85438.0"
     compare equal instead of being treated as different tokens."""
-
     values = set()
     for match in _NUMBER_PATTERN.findall(text):
         try:
@@ -245,37 +242,28 @@ def _numeric_set(text: str) -> str[float]:
     return values
 
 
-
-def _check_numeric_grouding(answer: str, tool_results: dict[str, Any]) -> None:
+def _check_numeric_grounding(answer: str, tool_results: dict[str, Any]) -> None:
     """Log a warning (never raises) if the answer contains a number that
-    doesn't appear anywhere in the tool results actually returned. Approximate
-    on purpose -- same style as forecast_explainer.py's grounding check."""
-
+    doesn't appear anywhere in the tool results actually returned."""
     known_numbers = _numeric_set(json.dumps(tool_results, default=str))
     answer_numbers = _numeric_set(answer.replace(",", ""))
     ungrounded = answer_numbers - known_numbers
     if ungrounded:
-        logger.warning(f"Chat answer contains numbers not found in tool results: %s", sorted(ungrounded))
-
+        logger.warning("Chat answer contains numbers not found in tool results: %s", sorted(ungrounded))
 
 
 def _fallback_answer(tool_results: dict[str, Any]) -> str:
     """Generic templated answer built purely from tool_results, used when the
-    LLM's final JSON can't be parsed/validated even after a retry -- a chat
-    request must never fail outright just because the LLM misbehaved."""
-
+    LLM's final JSON can't be parsed/validated even after a retry."""
     if not tool_results:
         return "I wasn't able to find data to answer that question. Try one of the quick-question buttons instead."
 
     parts = [f"{name}: {json.dumps(result, default=str)}" for name, result in tool_results.items()]
-
-    return "Here's the data I found: " + " | ".join(parts)
-
+    return "Here is the data retrieved from the database: " + " | ".join(parts)
 
 
 def _execute_tool_calls(tool_calls) -> dict[str, Any]:
     """Run each tool the model requested, returning {tool_name: result}."""
-
     results: dict[str, Any] = {}
     for call in tool_calls:
         name = call.function.name
@@ -295,9 +283,7 @@ def _execute_tool_calls(tool_calls) -> dict[str, Any]:
             logger.exception("Analytics function %s failed for args=%s", name, args)
             results[name] = {"error": f"{name} failed to run."}
 
-
     return results
-
 
 
 def run_chat(
@@ -305,31 +291,19 @@ def run_chat(
     history: Optional[list[dict[str, str]]] = None,
     store_id: Optional[str] = None,
     store_name: Optional[str] = None
-) -> dict[str, str]:
+) -> dict[str, Any]:
     """Answer a free-text question via LLM tool-calling.
 
-    store_id/store_name, when given (the dashboard's currently-selected
-    store), are added to the system prompt as context so store-scoped tools
-    apply that filter by default -- without this, get_top_category/
-    get_top_product always answer globally regardless of what's selected.
-
     Returns {"answer": str, "data": dict, "functions_used": list[str]}.
-    Never raises for a malformed final answer -- falls back to a templated
-    one built from the actual tool results instead. Network/credential
-    failures from the LLM call itself DO propagate, so the caller can turn
-    them into a clean 503 (same contract as
-    forecast_explainer.generate_explanation).
     """
-
     messages: list[dict[str, Any]] = [{"role": "system", "content": _build_system_prompt(store_id, store_name)}]
     for turn in history or []:
         if turn.get("role") in ("user", "assistant") and turn.get("content"):
             messages.append({"role": turn["role"], "content": turn["content"]})
     messages.append({"role": "user", "content": message})
 
-
-    assistant_message = call_chat(messages, tools = TOOLS)
-    tool_result: dict[str, Any] = {}
+    assistant_message = call_chat(messages, tools=TOOLS)
+    tool_results: dict[str, Any] = {}
 
     if assistant_message.tool_calls:
         messages.append(assistant_message.model_dump(exclude_none=True))
@@ -339,16 +313,16 @@ def run_chat(
                 {
                     "role": "tool",
                     "tool_call_id": call.id,
-                    "centent": json.dumps(tool_results.get(call.function.name, {}), default=str)
+                    "content": json.dumps(tool_results.get(call.function.name, {}), default=str),
                 }
             )
 
     for attempt in range(2):
-        final_message = call_chat(messages, json_mode = True)
+        final_message = call_chat(messages, json_mode=True)
         answer = _parse_answer(final_message.content)
         if answer is not None:
             if tool_results:
-                _check_numeric_grouding(answer, tool_results)
+                _check_numeric_grounding(answer, tool_results)
             return {"answer": answer, "data": tool_results, "functions_used": list(tool_results.keys())}
         logger.warning("Chat final answer failed validation on attempt %d: %r", attempt + 1, final_message.content)
 
@@ -356,39 +330,32 @@ def run_chat(
     return {
         "answer": _fallback_answer(tool_results),
         "data": tool_results,
-        "functions_used": list(tool_results.keys())
+        "functions_used": list(tool_results.keys()),
     }
 
 
-# ---------------------------------------------------------------------------
-# Quick-question buttons: deterministic answers, same analytics.py functions,
-# no LLM call -- fast and always consistent, for the frontend's predefined
-# question buttons. Response shape matches run_chat()'s so both paths render
-# in the same chat thread.
-# ---------------------------------------------------------------------------
-
-
 def _scope_phrase(result: dict[str, Any]) -> str:
-    return f" at store {result['store_id']}" if result.get("store_id") else "across all store"
-
+    return f" at store {result['store_id']}" if result.get("store_id") else " across all stores"
 
 
 def _format_top_category(result: dict[str, Any]) -> str:
     if result["category"] is None:
         return "No sales data available for that window."
+    units_str = f"{result['total_units']:,.0f}" if result["total_units"] is not None else "N/A"
     return (
-        f"**{result['category']}** is the top-selling category{_scope_phrase(result)} over the last."
-        f"{result['days']} days, with {result['total_units']:,.0f} units sold."
+        f"**{result['category']}** is the top-selling category{_scope_phrase(result)} over the last "
+        f"{result['days']} days, with {units_str} units sold."
     )
-
 
 
 def _format_top_product(result: dict[str, Any]) -> str:
     if result["product_id"] is None:
         return "No sales data is available for that window."
+    name = result.get("product_name") or result.get("product_id")
+    units_str = f"{result['total_units']:,.0f}" if result["total_units"] is not None else "N/A"
     return (
-        f"**{result['product_id']}** ({result['product_id']} is the top-selling product)"
-        f"{_scope_phrase(result)} over the last {result['days']} days, with {result['total_units']:,.0f} units sold."
+        f"**{name}** ({result['product_id']}) is the top-selling product{_scope_phrase(result)} over the last "
+        f"{result['days']} days, with {units_str} units sold."
     )
 
 
@@ -397,69 +364,68 @@ def _format_compare_categories(result: dict[str, Any]) -> str:
     if entry_a["total_units"] is None or entry_b["total_units"] is None:
         return "Could not find data for one or both of those categories."
     return (
-        f"Over the last{result['days']} days: **{entry_a['name']}** sold {entry_a['total_units']:,.0f} units."
-        f"({entry_a['avg_daily_units']:,.1f}/day) vs. **{entry_b['name']}** at {entry_b['total_units']:,.0f} units."
-        f"({entry_b['avg_daily_units']:,.1f}/days). **{result['leader']}** leads."
+        f"Over the last {result['days']} days: **{entry_a['name']}** sold {entry_a['total_units']:,.0f} units "
+        f"({entry_a['avg_daily_units']:,.1f}/day) vs. **{entry_b['name']}** at {entry_b['total_units']:,.0f} units "
+        f"({entry_b['avg_daily_units']:,.1f}/day). **{result['leader']}** leads."
     )
-
 
 
 def _format_store_performance(result: dict[str, Any]) -> str:
+    store_label = result.get("store_name") or result.get("store_id") or "Selected Store"
     if result["recent_avg"] is None:
-        return f"No data found for store {result["store_id"]}"
+        return f"No sales data found for store {result.get('store_id', 'unknown')}."
     if result["pct_change"] is None:
         return (
-            f"**{result["store_name"]}** is averaging {result['recent_avg']:,.1f} units/day over the "
-            f"last {result['recent_days']} days (no baseline available for comparision)."
+            f"**{store_label}** is averaging {result['recent_avg']:,.1f} units/day over the "
+            f"last {result['recent_days']} days (no baseline available for comparison)."
         )
 
     direction = "up" if result["pct_change"] >= 0 else "down"
+    baseline = result.get("baseline_avg", 0)
     return (
-        f"**{result['store_name']}** is averaging {result['recent_avg']:,.1f} units/day over the "
-        f"{result['recent_days']} days, {direction} {abs(result['pct_change']):.1f}% versus its "
-        f"{result['baseline_days']}-day baseline of {result['baseline_avg']:,.1f} units/day."
+        f"**{store_label}** is averaging {result['recent_avg']:,.1f} units/day over the "
+        f"last {result['recent_days']} days, {direction} {abs(result['pct_change']):.1f}% versus its "
+        f"{result['baseline_days']}-day baseline of {baseline:,.1f} units/day."
     )
-
 
 
 def _format_trending_down(result: dict[str, Any]) -> str:
     label = "products" if result["level"] == "product" else "stores"
     if result["count"] == 0:
         return f"No {label} are trending down beyond {result['threshold_pct']}% month-over-month."
-    lines = "\n".join(f"- {item['name']}: {item['mom_growth_pct']:+.1f}%" for item in result['items'])
+    lines = "\n".join(f"- {item['name'] or item['id']}: {item['mom_growth_pct']:+.1f}%" for item in result['items'])
     return (
         f"{result['count']} {label} are trending down (month-over-month at or below "
         f"{result['threshold_pct']}%):\n\n{lines}"
     )
 
 
-
 def _format_predicted_revenue(result: dict[str, Any]) -> str:
     if result["total_predicted_units"] is None:
         return "No forecast data is available."
+    rev_str = f"${result['total_predicted_revenue']:,.0f}" if result.get('total_predicted_revenue') is not None else "N/A"
     return (
         f"The 30-day forecast totals **{result['total_predicted_units']:,.0f} units**, for an approximate "
-        f"predicted revenue of **{result['total_predicted_units']:,.0f}** (using each product's base price "
-        f"as a stand-in for its future price."
+        f"predicted revenue of **{rev_str}** (using each product's base price as a proxy for future price)."
     )
 
 
 QUICK_ACTIONS: dict[str, tuple] = {
     "top_category": (
-        lambda params: analytics.get_top_category(store_id = params.get("store_id")),
+        lambda params: analytics.get_top_category(store_id=params.get("store_id")),
         _format_top_category,
     ),
     "top_product": (
-        lambda params: analytics.get_top_product(store_id = params.get("store_id")),
+        lambda params: analytics.get_top_product(store_id=params.get("store_id")),
         _format_top_product,
     ),
     "compare_categories": (
         lambda params: analytics.compare_categories(params["category_a"], params["category_b"]),
-        _format_compare_categories
+        _format_compare_categories,
     ),
     "store_performance": (
         lambda params: analytics.get_store_performance(params["store_id"]),
-        _format_store_performance
+        _format_store_performance,
     ),
     "underperforming_stores": (lambda params: analytics.get_trending_down("store"), _format_trending_down),
     "trending_down_products": (lambda params: analytics.get_trending_down("product"), _format_trending_down),
@@ -467,16 +433,8 @@ QUICK_ACTIONS: dict[str, tuple] = {
 }
 
 
-
 def run_quick_action(action: str, params: Optional[dict[str, Any]] = None) -> dict[str, Any]:
-    """Deterministic (no-LLM) answer for one of the predefined quick-question
-    buttons -- calls the same analytics.py functions as run_chat's tools,
-    just without an LLM deciding which one to call.
-
-    Raises KeyError if a required param is missing, ValueError if the action
-    is unknown -- both are caller errors (400), not server errors.
-    """
-
+    """Deterministic (no-LLM) answer for one of the predefined quick-question buttons."""
     entry = QUICK_ACTIONS.get(action)
     if entry is None:
         raise ValueError(f"Unknown quick action: {action}")
@@ -485,8 +443,6 @@ def run_quick_action(action: str, params: Optional[dict[str, Any]] = None) -> di
     result = fetch(params or {})
     return {
         "answer": formatter(result),
-        "data": {
-            action: result
-        },
-        "functions_used": [action]
+        "data": {action: result},
+        "functions_used": [action],
     }

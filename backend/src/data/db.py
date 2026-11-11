@@ -9,8 +9,6 @@ from contextlib import contextmanager
 from typing import Any, Optional
 
 from src.data.databricks_client import get_connection
-from src.config.settings import get_settings
-
 
 logger = logging.getLogger("forecastify_api.db")
 
@@ -49,10 +47,10 @@ HISTORY_QUERY = """
 
 FORECAST_QUERY = """
     SELECT forecast_date, predicted_units, product_id, store_id
-        FROM forecastify.gold.forecast_results
-        WHERE product_id = :product_id
-        AND store_id = :store_id
-        ORDER BY forecast_date
+    FROM forecastify.gold.forecast_results
+    WHERE product_id = :product_id
+      AND store_id = :store_id
+    ORDER BY forecast_date
 """
 
 RECENT_FEATURES_QUERY = """
@@ -78,11 +76,10 @@ PRODUCT_STATIC_QUERY = """
 """
 
 
-
 PRODUCT_LIST_QUERY = """
     SELECT product_id, product_name, category
-        FROM forecastify.silver.products
-        ORDER BY product_id
+    FROM forecastify.silver.products
+    ORDER BY product_id
 """
 
 
@@ -133,13 +130,14 @@ TOP_PRODUCT_BY_STORE_QUERY = """
 """
 
 
-CATEGORY_COMPARISION_QUERY = """
+CATEGORY_COMPARISON_QUERY = """
     SELECT category, SUM(units_sold) AS total_units, AVG(units_sold) AS avg_daily_units
     FROM forecastify.gold.sales_features
     WHERE category IN (:category_a, :category_b)
       AND date >= date_sub((SELECT MAX(date) FROM forecastify.gold.sales_features), :days)
     GROUP BY category
 """
+CATEGORY_COMPARISION_QUERY = CATEGORY_COMPARISON_QUERY
 
 
 STORE_PERFORMANCE_QUERY = """
@@ -159,7 +157,6 @@ STORE_PERFORMANCE_QUERY = """
 """
 
 
-
 TRENDING_DOWN_PRODUCTS_QUERY = """
     WITH latest AS (
         SELECT product_id, store_id, date, mom_growth_pct,
@@ -174,7 +171,6 @@ TRENDING_DOWN_PRODUCTS_QUERY = """
     HAVING AVG(l.mom_growth_pct) <= :threshold_pct
     ORDER BY avg_mom_growth_pct ASC
 """
-
 
 
 TRENDING_DOWN_STORES_QUERY = """
@@ -211,7 +207,6 @@ def run_query(query: str, params: Optional[dict] = None, connection = None) -> l
     blow past a client-side timeout. Pass an existing `connection` (see
     connection_scope()) to reuse it and skip the per-call handshake.
     """
-
     logger.info("Executing query: %s | params=%s", " ".join(query.split()), params or {})
 
     owns_connection = connection is None
@@ -221,6 +216,8 @@ def run_query(query: str, params: Optional[dict] = None, connection = None) -> l
     try:
         with connection.cursor() as cursor:
             cursor.execute(query, params or {})
+            if cursor.description is None:
+                return []
             columns = [col[0] for col in cursor.description]
             return [dict(zip(columns, row)) for row in cursor.fetchall()]
 
@@ -234,13 +231,11 @@ def connection_scope():
     """Open one Databricks connection for several queries run back to back,
     so only one session-open cost is paid instead of one per query. Pass the
     yielded connection to run_query(..., connection=...) for each call."""
-
     connection = get_connection()
     try:
         yield connection
     finally:
         connection.close()
-
 
 
 def fetch_forecasts(
@@ -253,7 +248,6 @@ def fetch_forecasts(
     Filter values are always passed as bound query parameters (never
     string-formatted into the SQL) to prevent injection.
     """
-
     filters = []
     params: dict[str, Any] = {}
 
@@ -277,26 +271,20 @@ def fetch_forecasts(
     return run_query(query, params)
 
 
-
 def check_connection() -> None:
     """Run a trivial query to verify the Databricks connection is alive."""
-
     run_query("SELECT 1")
-
 
 
 def fetch_distinct_products() -> list[dict[str, Any]]:
     """Fetch the distinct product_id/category pairs present in forecast_results."""
-
     query = f"SELECT DISTINCT product_id, category FROM {FORECAST_TABLE} ORDER BY product_id"
     return run_query(query)
-
 
 
 def fetch_history_actuals(product_id: str, store_id: str, history_days: int) -> list[dict[str, Any]]:
     """Real observed sales for one series, from forecastify.gold.sales_features --
     the last `history_days` days relative to that series' own most recent date."""
-
     return run_query(
         HISTORY_QUERY,
         {
@@ -307,18 +295,14 @@ def fetch_history_actuals(product_id: str, store_id: str, history_days: int) -> 
     )
 
 
-
 def fetch_forecast_predictions(product_id: str, store_id: str) -> list[dict[str, Any]]:
     """Model output for one series, from forecastify.gold.forecast_results."""
-
     return run_query(FORECAST_QUERY, {"product_id": product_id, "store_id": store_id})
-
 
 
 def fetch_recent_sales_features(product_id: str, store_id: str, days: int = 90) -> list[dict[str, Any]]:
     """Recent actuals + engineered features for one series, from
     forecastify.gold.sales_features -- feeds the /forecast/explain context builder."""
-
     return run_query(
         RECENT_FEATURES_QUERY,
         {"product_id": product_id, "store_id": store_id, "days": days}
@@ -328,24 +312,18 @@ def fetch_recent_sales_features(product_id: str, store_id: str, days: int = 90) 
 def fetch_product_static(product_id: str) -> Optional[dict[str, Any]]:
     """Static product context (category, lifecycle_status, demand_class,
     price_elasticity_tier) from forecastify.silver.products, or None if unknown."""
-
     rows = run_query(PRODUCT_STATIC_QUERY, {"product_id": product_id})
     return rows[0] if rows else None
 
 
-
 def fetch_products() -> list[dict[str, Any]]:
     """All products (product_id, product_name, category) for the frontend selector."""
-
     return run_query(PRODUCT_LIST_QUERY)
-
 
 
 def fetch_stores() -> list[dict[str, Any]]:
     """All stores (store_id, store_name, city, region) for the frontend selector."""
-
     return run_query(STORES_LIST_QUERY)
-
 
 
 def fetch_category_totals(
@@ -353,11 +331,9 @@ def fetch_category_totals(
 ) -> list[dict[str, Any]]:
     """Total actual units sold per category over the last `days` days, best first.
     Scoped to one store if store_id is given, otherwise across all stores."""
-
     if store_id is not None:
         return run_query(TOP_CATEGORY_BY_STORE_QUERY, {"days": days, "store_id": store_id}, connection=connection)
-    return run_query(TOP_CATEGORY_QUERY, {"days": days}, connection = connection)
-
+    return run_query(TOP_CATEGORY_QUERY, {"days": days}, connection=connection)
 
 
 def fetch_product_totals(
@@ -365,31 +341,25 @@ def fetch_product_totals(
 ) -> list[dict[str, Any]]:
     """Total actual units sold per product over the last `days` days, best first.
     Scoped to one store if store_id is given, otherwise across all stores."""
-
     if store_id is not None:
         return run_query(TOP_PRODUCT_BY_STORE_QUERY, {"days": days, "store_id": store_id}, connection=connection)
-
     return run_query(TOP_PRODUCT_QUERY, {"days": days}, connection=connection)
-
 
 
 def fetch_category_comparison(category_a: str, category_b: str, days: int = 90) -> list[dict[str, Any]]:
     """Total/average actual units sold for two categories over the last `days` days."""
-
     return run_query(
-        CATEGORY_COMPARISION_QUERY,
+        CATEGORY_COMPARISON_QUERY,
         {"category_a": category_a, "category_b": category_b, "days": days}
     )
 
 
 def fetch_store_performance(store_id: str, recent_days: int = 30, baseline_days: int = 180) -> Optional[dict[str, Any]]:
     """One store's recent average daily units sold vs. its own longer-run baseline average."""
-
     rows = run_query(
         STORE_PERFORMANCE_QUERY,
         {"store_id": store_id, "recent_days": recent_days, "baseline_days": baseline_days}
     )
-
     return rows[0] if rows else None
 
 
@@ -397,7 +367,6 @@ def fetch_trending_down(level: str, threshold_pct: float = -10.0, connection = N
     """ Products or stores whose latest month-over-month growth is at/below threshold_pct.
         level must be "product" or "store".
     """
-
     query = TRENDING_DOWN_PRODUCTS_QUERY if level == "product" else TRENDING_DOWN_STORES_QUERY
     return run_query(query, {"threshold_pct": threshold_pct}, connection=connection)
 
@@ -406,7 +375,5 @@ def fetch_predicted_revenue(connection = None) -> Optional[dict[str, Any]]:
     """Total predicted units/revenue across the whole forecast, using each
     product's base_price as a revenue proxy (forecast_results has no price
     of its own -- the actual future price is not yet known)."""
-
     rows = run_query(PREDICTED_REVENUE_QUERY, connection=connection)
     return rows[0] if rows else None
-

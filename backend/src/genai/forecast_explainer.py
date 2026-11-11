@@ -52,10 +52,9 @@ def _build_user_message(context: dict[str, Any], user_question: Optional[str]) -
 
     return (
         "Context (the only facts you may reference):\n"
-        f"{json.dumps(context, indent = 2, default = str)}\n\n",
+        f"{json.dumps(context, indent=2, default=str)}\n\n"
         f"{instruction}"
     )
-
 
 
 def _parse_and_validate(raw_content: str) -> Optional[dict[str, Any]]:
@@ -81,40 +80,37 @@ def _parse_and_validate(raw_content: str) -> Optional[dict[str, Any]]:
     }
 
 
-
 def _check_numeric_grounding(explanation: str, context: dict[str, Any]) -> None:
     """Log a warning (never raises) if the explanation contains a number that
-    doesn't appear anywhere in the context dict. Approximate on purpose --
-    exact numeric matching (rounding, formatting) is hard to do perfectly."""
-
-    context_numbers = set(_NUMBER_PATTERN.findall(json.dumps(context, default = str)))
+    doesn't appear anywhere in the context dict."""
+    context_numbers = set(_NUMBER_PATTERN.findall(json.dumps(context, default=str)))
     explanation_numbers = set(_NUMBER_PATTERN.findall(explanation))
 
     ungrounded = explanation_numbers - context_numbers
     if ungrounded:
-        logger.info(f"LLM explanation contains numbers not found in context: %s", sorted(ungrounded))
-
+        logger.info("LLM explanation contains numbers not found in context: %s", sorted(ungrounded))
 
 
 def _fallback_explanation(context: dict[str, Any]) -> dict[str, Any]:
     """Generic templated explanation built purely from context, used when the
-    LLM response can't be parsed/validated even after a retry -- the request
-    must never fail just because the LLM misbehaved."""
-
+    LLM response can't be parsed/validated even after a retry."""
     key_drivers = []
-    if context["recent_actuals"].get("trend_28d") is not None:
-        direction = "up" if context["recent_actuals"]["trend_28d"] >= 0 else "down"
+    recent_actuals = context.get("recent_actuals", {})
+    if recent_actuals.get("trend_28d") is not None:
+        direction = "up" if recent_actuals["trend_28d"] >= 0 else "down"
         key_drivers.append(f"The 28-day sales trend is currently trending {direction}.")
 
-    if context["promotion"]["promotion_flag"]:
+    promotion = context.get("promotion", {})
+    if promotion.get("promotion_flag"):
         key_drivers.append("A promotion was active as of the most recent observed data.")
 
     if not key_drivers:
-        key_drivers.append("Recent slaes history and seasonality patterns.")
+        key_drivers.append("Recent sales history and seasonality patterns.")
 
     risks = []
-    if context["holidays_in_forecast_window"]:
-        names = ", ".join(h["name"] for h in context["holidays_in_forecast_window"])
+    holidays = context.get("holidays_in_forecast_window", [])
+    if holidays:
+        names = ", ".join(h["name"] for h in holidays if "name" in h)
         risks.append(f"Holiday(s) fall within the forecast window ({names}), which may shift demand.")
 
     if not risks:
@@ -124,13 +120,13 @@ def _fallback_explanation(context: dict[str, Any]) -> dict[str, Any]:
     change_text = (
         f"{change:+.1f}% versus the trailing 28-day average"
         if change is not None
-        else "an amount that couldn't be compared to recent history"
+        else "an amount that could not be compared to recent history"
     )
 
     explanation = (
-        f"Over the next {context['forecast_horizon_days']} days, the model predicts an average of "
-        f"{context['avg_predicted_units']} units/day ({context['total_predicted_units']} total) for "
-        f"product {context['product_id']} at store {context['store_id']}, {change_text}."
+        f"Over the next {context.get('forecast_horizon_days', 30)} days, the model predicts an average of "
+        f"{context.get('avg_predicted_units', 0)} units/day ({context.get('total_predicted_units', 0)} total) for "
+        f"product {context.get('product_id', '')} at store {context.get('store_id', '')}, {change_text}."
     )
 
     return {
@@ -141,17 +137,8 @@ def _fallback_explanation(context: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-
 def generate_explanation(context: dict[str, Any], user_question: Optional[str]) -> dict[str, Any]:
-    """Run Steps 2-4: build the prompt, call the LLM, validate/repair its
-    response, and return the four narrative fields (explanation, key_drivers,
-    risks_or_opportunities, recommendation).
-
-    Never raises for a malformed LLM response -- falls back to a templated
-    explanation instead. Network/credential failures from the LLM call
-    itself DO propagate, so the caller can turn them into a clean 503.
-    """
-
+    """Run Steps 2-4: build the prompt, call the LLM, validate/repair its response."""
     user_message = _build_user_message(context, user_question)
 
     for attempt in range(2):

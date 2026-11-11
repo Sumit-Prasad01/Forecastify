@@ -1,19 +1,16 @@
-import os
 from pathlib import Path
 import pandas as pd
 
 from src.data.databricks_client import get_connection
 from src.config.settings import get_settings
 
-s = get_settings()
-
 # Databricks Gold Table
-CATALOG = "sales_ai"
+CATALOG = "forecastify"
 SCHEMA = "gold"
 TABLE = "forecast_results"
 
 
-def load_forecast_results():
+def load_forecast_results() -> pd.DataFrame:
     """
     Load the Gold forecast-results dataset.
 
@@ -26,7 +23,7 @@ def load_forecast_results():
     Returns:
         pandas.DataFrame
     """
-
+    s = get_settings()
     local_dataset_path = s.local_forecast_result_path
 
     if local_dataset_path:
@@ -44,7 +41,6 @@ def load_forecast_results():
             if suffix in {".feather", ".ftr"}:
                 return pd.read_feather(local_path)
 
-
             raise ValueError(
                 "LOCAL_FORECAST_RESULTS_PATH must point to a .csv, .parquet, or .feather file."
             )
@@ -55,7 +51,6 @@ def load_forecast_results():
     """
 
     connection = None
-
     try:
         connection = get_connection()
         return pd.read_sql(query, connection)
@@ -75,18 +70,14 @@ def load_forecast_results():
 
 
 if __name__ == "__main__":
-
     df = load_forecast_results()
 
     print("=" * 60)
     print("FORECAST RESULTS LOADER TEST")
     print("=" * 60)
-
     print(f"Records : {len(df):,}")
     print(f"Columns : {len(df.columns)}")
-
     print("\nColumns:")
     print(df.columns.tolist())
-
     print("\nSample:")
     print(df.head())

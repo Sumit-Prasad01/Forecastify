@@ -24,83 +24,68 @@ class ForecastRecord(BaseModel):
     model_version: str
 
 
-
 class ForecastListResponse(BaseModel):
     """Response body for GET /forecast."""
 
-    count : int
-    results : List[ForecastRecord]
-
+    count: int
+    results: List[ForecastRecord]
 
 
 class HealthResponse(BaseModel):
     """Response for GET /health."""
 
-    status : str
-    databricks_connected : bool
-
+    status: str
+    databricks_connected: bool
 
 
 class ForecastPoint(BaseModel):
-    """One point on a merged actual/forecast timeline.
+    """One point on a merged actual/forecast timeline."""
 
-    actual_units is sourced from sales_ai.gold.sales_features (real observed
-    sales); predicted_units is sourced from sales_ai.gold.forecast_results
-    (model output). Exactly one of the two is populated per date.
-    """
-
-    date : date
-    actual_units : Optional[float] = None
-    predicted_units : Optional[float] = None
-
+    date: date
+    actual_units: Optional[float] = None
+    predicted_units: Optional[float] = None
 
 
 class ForecastTrendResponse(BaseModel):
     """Response body for GET /forecast when include_history=true."""
 
-    product_id : str
-    store_id : str
-    history_days : int
-    points : List[ForecastPoint]
-
-
+    product_id: str
+    store_id: str
+    history_days: int
+    points: List[ForecastPoint]
 
 
 class ProductForecastGroup(BaseModel):
     """All forecast_results rows for one product, for GET /forecast/trend/all."""
 
-    product_id : str
-    category : str
-    records : List[ForecastRecord]
-
+    product_id: str
+    category: str
+    records: List[ForecastRecord]
 
 
 class Product(BaseModel):
     """One row from forecastify.silver.products, for GET /products."""
 
-    product_id : str
-    product_name : str
-    category : str
-
+    product_id: str
+    product_name: str
+    category: str
 
 
 class Store(BaseModel):
     """One row from forecastify.silver.stores, for GET /stores."""
 
-    store_id : str
-    store_name : str
-    city : str
-    region : str
-
+    store_id: str
+    store_name: str
+    city: str
+    region: str
 
 
 class ExplainRequest(BaseModel):
     """Request body for POST /forecast/explain."""
 
-    product_id : str
-    store_id : str 
-    user_question : Optional[str] = None
-
+    product_id: str
+    store_id: str 
+    user_question: Optional[str] = None
 
 
 class ForecastSummary(BaseModel):
@@ -109,7 +94,6 @@ class ForecastSummary(BaseModel):
     avg_predicted_units: float
     total_predicted_units: float
     vs_recent_history_pct_change: Optional[float] = None
-
 
 
 class ExplainResponse(BaseModel):
@@ -142,8 +126,7 @@ class ChatRequest(BaseModel):
 
 
 class ChatResponse(BaseModel):
-    """Response body for POST /chat and POST /chat/quick -- same shape for
-    both, so the frontend can render them in one unified conversation."""
+    """Response body for POST /chat and POST /chat/quick."""
 
     answer: str
     data: Dict[str, Any]
@@ -190,6 +173,13 @@ class UploadedFileInfo(BaseModel):
 
     filename: str
     volume_path: str
+
+
+class PipelineUploadResponse(BaseModel):
+    """Response body for POST /pipeline/upload."""
+
+    files: List[UploadedFileInfo]
+    status: str = "uploaded"
 
 
 class PipelineTriggerResponse(BaseModel):

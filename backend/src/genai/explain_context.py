@@ -7,22 +7,28 @@ main.py or forecast_explainer.py should pass raw table rows to the LLM
 instead of this computed summary.
 """
 
-from datetime import datetime 
+from datetime import date, datetime
 from statistics import mean
 from typing import Any, Optional
 
-# Same fixed-date holiday approach as reference_notebooks/07_batch_inference.py,
-# since forecast dates extend past what sales_ai.gold.sales_features' historical
-# calendar covers. Extend this dict as forecast dates move into new years.
 FIXED_FUTURE_HOLIDAYS = {
     "2026-01-01": ("New Year", "National"),
     "2026-01-26": ("Republic Day", "National"),
 }
 
 
-def _to_date(value):
-    """Normalize a date/datetime value form the connector to a plain date."""
-    return value.date() if isinstance(value, datetime) else value
+def _to_date(value) -> date:
+    """Normalize a date/datetime/string value from the connector to a plain date."""
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    if isinstance(value, str):
+        try:
+            return datetime.strptime(value.split("T")[0], "%Y-%m-%d").date()
+        except ValueError:
+            pass
+    return date.today()
 
 
 def _holidays_in_window(forecast_dates: list) -> list[dict[str, Any]]:
@@ -42,31 +48,32 @@ def build_forecast_context(
         recent_features_rows: list[dict[str, Any]],
         product_static: Optional[dict[str, Any]]
 ) -> dict[str, Any]:
-    """Assemble the structured, computed context dict handed to the LLM.
+    """Assemble the structured, computed context dict handed to the LLM."""
+    if not forecast_rows:
+        return {
+            "product_id": product_id,
+            "store_id": store_id,
+            "error": "No forecast rows provided.",
+        }
 
-    forecast_rows: sales_ai.gold.forecast_results rows for this product/store
-    (from db.fetch_forecasts). recent_features_rows: the last-N-days
-    sales_ai.gold.sales_features rows (from db.fetch_recent_sales_features).
-    product_static: sales_ai.silver.products attributes (from
-    db.fetch_product_static), or None if the product isn't found there.
-    """
-
-    sorted_forecast = sorted(forecast_rows, key = lambda r: _to_date(r["forecast_date"]))
-    predicted_units = [float(r["predicted_units"]) for r in sorted_forecast]
-    avg_predicted = mean(predicted_units)
+    sorted_forecast = sorted(forecast_rows, key=lambda r: _to_date(r["forecast_date"]))
+    predicted_units = [float(r["predicted_units"]) for r in sorted_forecast if r.get("predicted_units") is not None]
+    avg_predicted = mean(predicted_units) if predicted_units else 0.0
     total_predicted = sum(predicted_units)
 
-    sorted_history = sorted(recent_features_rows, key = lambda r: _to_date(r["date"]))
-    latest = sorted_history[-1]
+    sorted_history = sorted(recent_features_rows, key=lambda r: _to_date(r["date"])) if recent_features_rows else []
+    latest = sorted_history[-1] if sorted_history else {}
     rolling_mean_28 = latest.get("rolling_mean_28")
 
     vs_recent_history_pct_change = None
-    if rolling_mean_28:
+    if rolling_mean_28 and rolling_mean_28 != 0:
         vs_recent_history_pct_change = round((avg_predicted - rolling_mean_28) / rolling_mean_28 * 100, 2)
 
     daily_forecast = [
-        {"date": _to_date(r["forecast_date"]).isoformat(),
-        "predicted_units": round(float(r["predicted_units"]), 2)}
+        {
+            "date": _to_date(r["forecast_date"]).isoformat(),
+            "predicted_units": round(float(r["predicted_units"]), 2) if r.get("predicted_units") is not None else 0.0,
+        }
         for r in sorted_forecast
     ]
 
@@ -75,7 +82,7 @@ def build_forecast_context(
     return {
         "product_id": product_id,
         "store_id": store_id,
-        "category": (product_static or {}).get("category") or sorted_forecast[0].get("category"),
+        "category": (product_static or {}).get("category") or sorted_forecast[0].get("category", "General"),
         "lifecycle_status": (product_static or {}).get("lifecycle_status"),
         "demand_class": (product_static or {}).get("demand_class"),
         "price_elasticity_tier": (product_static or {}).get("price_elasticity_tier"),
@@ -85,10 +92,10 @@ def build_forecast_context(
         "avg_predicted_units": round(avg_predicted, 2),
         "total_predicted_units": round(total_predicted, 2),
         "daily_forecast": daily_forecast,
-        "model_version": sorted_forecast[-1].get("model_version"),
+        "model_version": sorted_forecast[-1].get("model_version", "1.0"),
         "recent_actuals": {
             "window_days": len(sorted_history),
-            "latest_date": _to_date(latest["date"]).isoformat(),
+            "latest_date": _to_date(latest.get("date", date.today())).isoformat() if latest else None,
             "latest_units_sold": latest.get("units_sold"),
             "rolling_mean_28": rolling_mean_28,
             "trend_7d": latest.get("trend_7d"),
